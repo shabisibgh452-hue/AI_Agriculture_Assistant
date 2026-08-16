@@ -1,56 +1,56 @@
 import os
 import sys
-import tensorflow as tf
+import pandas as pd
+import joblib
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-# Root path add
+# ==========================================
+# IMPORT CONFIG
+# ==========================================
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import *
 
-from config import DISEASE_TRAIN, DISEASE_VALID
+# ==========================================
+# LOAD DATASET
+# ==========================================
+df = pd.read_csv(FERTILIZER_DATASET)
 
-# Image size
-IMG_SIZE = (224, 224)
-BATCH_SIZE = 32
+# ==========================================
+# REMOVE MISSING VALUES
+# ==========================================
+df.dropna(inplace=True)
 
-# Training Dataset
-train_dataset = tf.keras.utils.image_dataset_from_directory(
-    DISEASE_TRAIN,
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    shuffle=True
-)
+# ==========================================
+# ENCODE CATEGORICAL COLUMNS
+# ==========================================
+soil_encoder = LabelEncoder()
+crop_encoder = LabelEncoder()
+fertilizer_encoder = LabelEncoder()
 
-# Validation Dataset
-valid_dataset = tf.keras.utils.image_dataset_from_directory(
-    DISEASE_VALID,
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    shuffle=False
-)
+df["Soil Type"] = soil_encoder.fit_transform(df["Soil Type"])
+df["Crop Type"] = crop_encoder.fit_transform(df["Crop Type"])
+df["Fertilizer Name"] = fertilizer_encoder.fit_transform(df["Fertilizer Name"])
 
-# Save class names BEFORE map()
-class_names = train_dataset.class_names
+# ==========================================
+# FEATURES & TARGET
+# ==========================================
+X = df.drop(columns=["Fertilizer Name"])
+y = df["Fertilizer Name"]
 
-# Normalize Images
-normalization_layer = tf.keras.layers.Rescaling(1.0 / 255)
+# ==========================================
+# FEATURE SCALING
+# ==========================================
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
 
-train_dataset = train_dataset.map(
-    lambda x, y: (normalization_layer(x), y)
-)
-
-valid_dataset = valid_dataset.map(
-    lambda x, y: (normalization_layer(x), y)
-)
+# ==========================================
+# SAVE ENCODERS
+# ==========================================
+joblib.dump(soil_encoder, SOIL_ENCODER)
+joblib.dump(crop_encoder, CROP_ENCODER)
+joblib.dump(fertilizer_encoder, FERTILIZER_ENCODER)
+joblib.dump(scaler, SCALER)
 
 print("=" * 50)
-print("Disease Dataset Loaded Successfully!")
+print("Fertilizer Preprocessing Completed Successfully!")
 print("=" * 50)
-
-print("Number of Classes:", len(class_names))
-
-print("\nClasses:")
-for i, cls in enumerate(class_names):
-    print(f"{i+1}. {cls}")
-
-print("\nPreprocessing Completed Successfully!")

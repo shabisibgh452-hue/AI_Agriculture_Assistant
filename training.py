@@ -1,110 +1,87 @@
 import os
 import sys
-import tensorflow as tf
+import pandas as pd
+import joblib
 
-# Root path add
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+# ==========================================
+# IMPORT CONFIG
+# ==========================================
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import *
 
-from config import DISEASE_TRAIN, DISEASE_VALID, DISEASE_MODEL
+# ==========================================
+# LOAD DATASET
+# ==========================================
+df = pd.read_csv(FERTILIZER_DATASET)
+df.dropna(inplace=True)
 
-# ==========================
-# Parameters
-# ==========================
-IMG_SIZE = (128, 128)
-BATCH_SIZE = 8
-EPOCHS = 3
+# ==========================================
+# LOAD ENCODERS & SCALER
+# ==========================================
+soil_encoder = joblib.load(SOIL_ENCODER)
+crop_encoder = joblib.load(CROP_ENCODER)
+fertilizer_encoder = joblib.load(FERTILIZER_ENCODER)
+scaler = joblib.load(SCALER)
 
-# ==========================
-# Load Training Dataset
-# ==========================
-train_dataset = tf.keras.utils.image_dataset_from_directory(
-    DISEASE_TRAIN,
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    shuffle=True
+# ==========================================
+# ENCODE CATEGORICAL COLUMNS
+# ==========================================
+df["Soil Type"] = soil_encoder.transform(df["Soil Type"])
+df["Crop Type"] = crop_encoder.transform(df["Crop Type"])
+df["Fertilizer Name"] = fertilizer_encoder.transform(df["Fertilizer Name"])
+
+# ==========================================
+# FEATURES & TARGET
+# ==========================================
+X = df.drop("Fertilizer Name", axis=1)
+y = df["Fertilizer Name"]
+
+# ==========================================
+# FEATURE SCALING
+# ==========================================
+X = scaler.transform(X)
+
+# ==========================================
+# TRAIN TEST SPLIT
+# ==========================================
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
 )
 
-# ==========================
-# Load Validation Dataset
-# ==========================
-valid_dataset = tf.keras.utils.image_dataset_from_directory(
-    DISEASE_VALID,
-    image_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    label_mode="categorical",
-    shuffle=False
+# ==========================================
+# TRAIN MODEL
+# ==========================================
+model = RandomForestClassifier(
+    n_estimators=200,
+    random_state=42
 )
 
-# ==========================
-# Normalize Images
-# ==========================
-normalization_layer = tf.keras.layers.Rescaling(1.0 / 255)
+model.fit(X_train, y_train)
 
-train_dataset = train_dataset.map(
-    lambda x, y: (normalization_layer(x), y)
-)
+# ==========================================
+# EVALUATION
+# ==========================================
+train_accuracy = accuracy_score(y_train, model.predict(X_train))
+test_accuracy = accuracy_score(y_test, model.predict(X_test))
+cv_accuracy = cross_val_score(model, X, y, cv=5).mean()
 
-valid_dataset = valid_dataset.map(
-    lambda x, y: (normalization_layer(x), y)
-)
+print("=" * 50)
+print(f"Training Accuracy : {train_accuracy*100:.2f}%")
+print(f"Testing Accuracy  : {test_accuracy*100:.2f}%")
+print(f"Cross Validation  : {cv_accuracy*100:.2f}%")
+print("=" * 50)
 
-# ==========================
-# CNN Model
-# ==========================
-model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(128, 128, 3)),
+# ==========================================
+# SAVE MODEL
+# ==========================================
+joblib.dump(model, FERTILIZER_MODEL)
 
-    tf.keras.layers.Conv2D(32, (3, 3), activation="relu"),
-    tf.keras.layers.MaxPooling2D(),
-
-    tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
-    tf.keras.layers.MaxPooling2D(),
-
-    tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
-    tf.keras.layers.MaxPooling2D(),
-
-    tf.keras.layers.Flatten(),
-
-    tf.keras.layers.Dense(128, activation="relu"),
-    tf.keras.layers.Dropout(0.5),
-
-    tf.keras.layers.Dense(38, activation="softmax")
-])
-
-# ==========================
-# Compile Model
-# ==========================
-model.compile(
-    optimizer="adam",
-    loss="categorical_crossentropy",
-    metrics=["accuracy"]
-)
-
-# ==========================
-# Train Model
-# ==========================
-history = model.fit(
-    train_dataset,
-    validation_data=valid_dataset,
-    epochs=EPOCHS
-)
-
-# ==========================
-# Save Model
-# ==========================
-model.save(DISEASE_MODEL)
-
-print("\n===================================")
-print("Disease Model Trained Successfully!")
-print("Model Saved At:", DISEASE_MODEL)
-print("===================================")
-
-# ==========================
-# Final Accuracy
-# ==========================
-train_acc = history.history["accuracy"][-1]
-val_acc = history.history["val_accuracy"][-1]
-
-print(f"Training Accuracy : {train_acc*100:.2f}%")
-print(f"Validation Accuracy : {val_acc*100:.2f}%")
+print("✅ Fertilizer Model Saved Successfully!")
