@@ -1,86 +1,110 @@
-# ==========================================
-# IMPORT LIBRARIES
-# ==========================================
-
-import pandas as pd
-import joblib
 import os
+import sys
+import tensorflow as tf
 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_absolute_error
+# Root path add
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# ==========================================
-# LOAD CLEAN DATASET
-# ==========================================
+from config import DISEASE_TRAIN, DISEASE_VALID, DISEASE_MODEL
 
-df = pd.read_csv("datasets/yield_cleaned.csv")
+# ==========================
+# Parameters
+# ==========================
+IMG_SIZE = (128, 128)
+BATCH_SIZE = 8
+EPOCHS = 3
 
-# ==========================================
-# FEATURES & TARGET
-# ==========================================
-
-X = df.drop("hg/ha_yield", axis=1)
-y = df["hg/ha_yield"]
-
-# ==========================================
-# TRAIN TEST SPLIT
-# ==========================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
+# ==========================
+# Load Training Dataset
+# ==========================
+train_dataset = tf.keras.utils.image_dataset_from_directory(
+    DISEASE_TRAIN,
+    image_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    label_mode="categorical",
+    shuffle=True
 )
 
-# ==========================================
-# TRAIN MODEL
-# ==========================================
-
-model = RandomForestRegressor(
-    n_estimators=300,
-    random_state=42
+# ==========================
+# Load Validation Dataset
+# ==========================
+valid_dataset = tf.keras.utils.image_dataset_from_directory(
+    DISEASE_VALID,
+    image_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    label_mode="categorical",
+    shuffle=False
 )
 
-model.fit(X_train, y_train)
+# ==========================
+# Normalize Images
+# ==========================
+normalization_layer = tf.keras.layers.Rescaling(1.0 / 255)
 
-# ==========================================
-# PREDICTION
-# ==========================================
-
-y_pred = model.predict(X_test)
-
-# ==========================================
-# EVALUATION
-# ==========================================
-
-from sklearn.metrics import (
-    r2_score,
-    mean_absolute_error,
-    mean_squared_error
+train_dataset = train_dataset.map(
+    lambda x, y: (normalization_layer(x), y)
 )
 
-y_pred = model.predict(X_test)
+valid_dataset = valid_dataset.map(
+    lambda x, y: (normalization_layer(x), y)
+)
 
-r2 = r2_score(y_test, y_pred)
-mae = mean_absolute_error(y_test, y_pred)
-rmse = mean_squared_error(y_test, y_pred) ** 0.5
+# ==========================
+# CNN Model
+# ==========================
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(128, 128, 3)),
 
-accuracy = r2 * 100
+    tf.keras.layers.Conv2D(32, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D(),
 
-print(f"Accuracy : {accuracy:.2f}%")
-print(f"R2 Score : {r2:.4f}")
-print(f"MAE : {mae:.2f}")
-print(f"RMSE : {rmse:.2f}")
+    tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D(),
 
+    tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D(),
 
-# ==========================================
-# SAVE MODEL
-# ==========================================
+    tf.keras.layers.Flatten(),
 
-os.makedirs("models", exist_ok=True)
+    tf.keras.layers.Dense(128, activation="relu"),
+    tf.keras.layers.Dropout(0.5),
 
-joblib.dump(model, "models/crop_yield_model.pkl")
+    tf.keras.layers.Dense(38, activation="softmax")
+])
 
-print("Model Saved Successfully!")
+# ==========================
+# Compile Model
+# ==========================
+model.compile(
+    optimizer="adam",
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+# ==========================
+# Train Model
+# ==========================
+history = model.fit(
+    train_dataset,
+    validation_data=valid_dataset,
+    epochs=EPOCHS
+)
+
+# ==========================
+# Save Model
+# ==========================
+model.save(DISEASE_MODEL)
+
+print("\n===================================")
+print("Disease Model Trained Successfully!")
+print("Model Saved At:", DISEASE_MODEL)
+print("===================================")
+
+# ==========================
+# Final Accuracy
+# ==========================
+train_acc = history.history["accuracy"][-1]
+val_acc = history.history["val_accuracy"][-1]
+
+print(f"Training Accuracy : {train_acc*100:.2f}%")
+print(f"Validation Accuracy : {val_acc*100:.2f}%")
