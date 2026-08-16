@@ -1,68 +1,27 @@
-import os
-import joblib
+# ==========================================
+# IMPORT LIBRARIES
+# ==========================================
+
 import pandas as pd
+import joblib
+import os
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score
-
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_absolute_error
 
 # ==========================================
-# ROOT DIRECTORY
+# LOAD CLEAN DATASET
 # ==========================================
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
-
-MODEL_DIR = os.path.join(BASE_DIR, "models")
-ENCODER_DIR = os.path.join(BASE_DIR, "encoders")
-DATASET_PATH = os.path.join(
-    BASE_DIR,
-    "datasets",
-    "cleaned_crop_data.csv"
-)
-
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(ENCODER_DIR, exist_ok=True)
-
-
-# ==========================================
-# LOAD DATASET
-# ==========================================
-
-df = pd.read_csv(DATASET_PATH)
-
-print("Dataset Loaded Successfully!")
-print("Dataset Shape:", df.shape)
-
+df = pd.read_csv("datasets/yield_cleaned.csv")
 
 # ==========================================
 # FEATURES & TARGET
 # ==========================================
 
-X = df.drop("label", axis=1)
-y = df["label"]
-
-
-# ==========================================
-# ENCODE TARGET
-# ==========================================
-
-encoder = LabelEncoder()
-
-y_encoded = encoder.fit_transform(y)
-
-print("\nCrop Classes:")
-print(encoder.classes_)
-
-print("\nNumber of Classes:", len(encoder.classes_))
-
+X = df.drop("hg/ha_yield", axis=1)
+y = df["hg/ha_yield"]
 
 # ==========================================
 # TRAIN TEST SPLIT
@@ -70,120 +29,58 @@ print("\nNumber of Classes:", len(encoder.classes_))
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
-    y_encoded,
-    test_size=0.20,
-    random_state=42,
-    stratify=y_encoded
+    y,
+    test_size=0.2,
+    random_state=42
 )
 
-
 # ==========================================
-# MODELS
-# ==========================================
-
-models = {
-
-    "Random Forest": RandomForestClassifier(
-        n_estimators=300,
-        random_state=42
-    ),
-
-    "XGBoost": XGBClassifier(
-        n_estimators=300,
-        random_state=42,
-        eval_metric="mlogloss"
-    ),
-
-    "LightGBM": LGBMClassifier(
-        n_estimators=300,
-        random_state=42
-    ),
-
-    "Deep Learning": MLPClassifier(
-        hidden_layer_sizes=(100, 50),
-        max_iter=500,
-        random_state=42
-    )
-}
-
-
-# ==========================================
-# TRAIN MODELS
+# TRAIN MODEL
 # ==========================================
 
-best_model = None
-best_accuracy = 0
+model = RandomForestRegressor(
+    n_estimators=300,
+    random_state=42
+)
 
-print("\n==============================")
-print("MODEL ACCURACIES")
-print("==============================")
+model.fit(X_train, y_train)
 
-for name, model in models.items():
+# ==========================================
+# PREDICTION
+# ==========================================
 
-    print(f"\nTraining {name}...")
+y_pred = model.predict(X_test)
 
-    model.fit(X_train, y_train)
+# ==========================================
+# EVALUATION
+# ==========================================
 
-    predictions = model.predict(X_test)
+from sklearn.metrics import (
+    r2_score,
+    mean_absolute_error,
+    mean_squared_error
+)
 
-    accuracy = accuracy_score(
-        y_test,
-        predictions
-    ) * 100
+y_pred = model.predict(X_test)
 
-    print(f"{name}: {accuracy:.2f}%")
+r2 = r2_score(y_test, y_pred)
+mae = mean_absolute_error(y_test, y_pred)
+rmse = mean_squared_error(y_test, y_pred) ** 0.5
 
-    if accuracy > best_accuracy:
+accuracy = r2 * 100
 
-        best_accuracy = accuracy
-        best_model = model
+print(f"Accuracy : {accuracy:.2f}%")
+print(f"R2 Score : {r2:.4f}")
+print(f"MAE : {mae:.2f}")
+print(f"RMSE : {rmse:.2f}")
 
 
 # ==========================================
 # SAVE MODEL
 # ==========================================
 
-model_path = os.path.join(
-    MODEL_DIR,
-    "best_crop_model.pkl"
-)
+os.makedirs("models", exist_ok=True)
 
-encoder_path = os.path.join(
-    ENCODER_DIR,
-    "crop_encoder.pkl"
-)
+joblib.dump(model, "models/crop_yield_model.pkl")
 
-joblib.dump(best_model, model_path)
-
-joblib.dump(
-    encoder,
-    encoder_path
-)
-
-
-# ==========================================
-# FINAL OUTPUT
-# ==========================================
-
-print("\n===================================")
-print("Crop Recommendation Training Done!")
-print("===================================")
-
-print(
-    f"Best Model Accuracy: "
-    f"{best_accuracy:.2f}%"
-)
-
-print("\nModel Saved:")
-print(model_path)
-
-print("\nEncoder Saved:")
-print(encoder_path)
-
-print("\nNumber of Classes:")
-print(len(encoder.classes_))
-
-print("\nClasses:")
-print(list(encoder.classes_))
-
-print("===================================")
+print("Model Saved Successfully!")

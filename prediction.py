@@ -1,27 +1,52 @@
+# ==========================================
+# IMPORT LIBRARIES
+# ==========================================
+
 import joblib
-import pandas as pd
 
-# Load Model
-model = joblib.load("../models/best_crop_model.pkl")
+# ==========================================
+# LOAD MODEL & ENCODERS
+# ==========================================
 
-# Load Encoder
-encoder = joblib.load("../encoders/crop_encoder.pkl")
+model = joblib.load("models/crop_yield_model.pkl")
+area_encoder = joblib.load("encoders/area_encoder.pkl")
+item_encoder = joblib.load("encoders/item_encoder.pkl")
 
-# Sample Input
-sample = pd.DataFrame({
-    "N": [90],
-    "P": [42],
-    "K": [43],
-    "temperature": [20.87],
-    "humidity": [82.00],
-    "ph": [6.50],
-    "rainfall": [202.93]
-})
+# ==========================================
+# USER INPUT
+# ==========================================
 
-# Predict
-prediction = model.predict(sample)
+area = input("Enter Area: ")
+item = input("Enter Crop Name: ")
+year = int(input("Enter Year: "))
+rainfall = float(input("Enter Average Rainfall (mm/year): "))
+pesticides = float(input("Enter Pesticides (tonnes): "))
+temperature = float(input("Enter Average Temperature: "))
 
-# Decode Prediction
-crop = encoder.inverse_transform(prediction)
+# ==========================================
+# ENCODE INPUT
+# ==========================================
 
-print("Recommended Crop:", crop[0])
+area = area_encoder.transform([area])[0]
+item = item_encoder.transform([item])[0]
+
+# ==========================================
+# PREDICT
+# ==========================================
+
+prediction = model.predict([[
+    area,
+    item,
+    year,
+    rainfall,
+    pesticides,
+    temperature
+]])
+
+# ==========================================
+# OUTPUT
+# ==========================================
+
+print("\n==============================")
+print(f"Predicted Crop Yield: {prediction[0]:.2f} hg/ha")
+print("==============================")
